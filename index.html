@@ -12,7 +12,16 @@
 		padding: 0;
 	}
 
-	svg {display: block;}
+	body {position: relative;}
+
+	svg {display: block; position: relative; z-index: 1000}
+
+	canvas {
+		display: block; 
+		position: absolute;
+		width: 100vw;
+		height: 100vh;
+	}
 
 	.dragable {
 		cursor: pointer;
@@ -20,6 +29,7 @@
 
 </style>
 
+<canvas id="canvas"></canvas>
 <svg id="main_svg" height="100%" width="100%" >
 	
 	<circle class="dragable" id="earth" r=50></circle>	
