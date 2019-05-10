@@ -7,6 +7,23 @@
 		var width = box.width;
 		var height = box.height;
 
+		var G = 6.67384E-11;
+		var M = 5.972E24;
+		var d = 384000000;
+		var v = 3683 * 1000 / 3600; // м/c
+		
+		var dt = 3600; // крок в секундах
+
+		var earth_loc = [0, 0];
+		var moon_loc = [-d, 0];
+
+		var project = projection()
+			.x_domain([-d*2, d*2])
+			.y_domain([-d*2, d*2])
+			.x_range([0, width])
+			.y_range([height/2 - width/2, height/2 + width/2])
+		;
+
 		var ctx = d3.select("canvas")
 			.attr("width", width)
 			.attr("height", height)
@@ -15,86 +32,69 @@
 
 
 		var earth = d3.select("#earth")
-			.datum({x: width/2, y: height/2})
-			.attr("cx", d => d.x)
-			.attr("cy", d => d.y)
+			.datum({l: earth_loc, lp: project(earth_loc)})
+			.attr("cx", d => d.lp[0])
+			.attr("cy", d => d.lp[1])
 			.call(d3.drag()
 	        .on("start", dragstarted)
 	        .on("drag", dragged)
 	        .on("end", dragended))
+
 
 		var moon = d3.select("#moon")
-			.datum({x: width/4, y: height/2})
-			.attr("cx", d => d.x)
-			.attr("cy", d => d.y)
+			.datum({l: moon_loc, lp: project(moon_loc), v: [0, v]})
+			.attr("cx", d => d.lp[0])
+			.attr("cy", d => d.lp[1])
 			.call(d3.drag()
 	        .on("start", dragstarted)
 	        .on("drag", dragged)
 	        .on("end", dragended))
 
-
-		var G = 6.67384E-11;
-		var M = 5.972E24;
-		var d = 384000000;
-		var v = 3683 * 1000 / 3600; // м/c
-
-		var dt = 3600;
-
-
-		var real_to_virtual = d3.scaleLinear()
-			.domain([0, d])
-			.range([0, get_distance(moon.datum(), earth.datum())]);
 
 		var moon_d = moon.datum();
 		var earth_d = earth.datum();
 
-		moon_d.vy = v;
-		moon_d.vx = 0;
-
-		var a;
+		var a_length;
 		var r;
 
 		function tick() {
-			a = G*M/(sq(d));
+			a_length = G*M/(sq(d));
 
-			r_px = minus(earth_d, moon_d); 
-			r = {x: real_to_virtual.invert(r_px.x), y: real_to_virtual.invert(r_px.y)};
+			r = minus(earth_d.l, moon_d.l);
 
+			r_length = get_distance([0, 0], r);
+			r_one = [r[0]/r_length, r[1]/r_length];
 
-			r_length = get_distance({x: 0, y: 0}, r);
-			r_one = {x: r.x/r_length, y: r.y/r_length};
+			a = scale(r_one, a_length);
 
-			a_v = scale(r_one, a);
+			moon_d.dl = plus(scale(moon_d.v, dt), scale(a, sq(dt)));
 
-
-			moon_d.dx_r = moon_d.vx * dt + a_v.x * sq(dt) / 2;
-			moon_d.dy_r = moon_d.vy * dt + a_v.y * sq(dt) / 2; 
-
-			moon_d.x = moon_d.x + real_to_virtual(moon_d.dx_r);
-			moon_d.y = moon_d.y + real_to_virtual(moon_d.dy_r);
+			moon_d.l = plus(moon_d.l, moon_d.dl);
+			moon_d.lp = project(moon_d.l);
 
 			moon
-				.attr("cx", d => d.x)
-				.attr("cy", d => d.y)
+				.attr("cx", d => d.lp[0])
+				.attr("cy", d => d.lp[1])
 
-			ctx.fillRect(moon_d.x,moon_d.y,2,2);
-
-			console.log(moon_d)
-
-			moon_d.vx = moon_d.vx + a_v.x * dt;
-			moon_d.vy = moon_d.vy + a_v.y * dt; 
-
-
+			ctx.fillRect(moon_d.lp[0], moon_d.lp[1], 2, 2);
+			moon_d.v = plus(moon_d.v, scale(a, dt));
 		}
 
 		setInterval(tick, 10);
+
+		// setInterval(tick, 50);
 
 		function dragstarted(d) {
 		  	d3.select(this).raise().classed("active", true);
 		}
 
 		function dragged(d) {
-		  	d3.select(this).attr("cx", d.x = d3.event.x).attr("cy", d.y = d3.event.y);
+		  	d.lp = [d3.event.x, d3.event.y];
+		  	d.l = project.invert(d.lp);
+
+		  	d3.select(this)
+		  		.attr("cx", d.lp[0])
+		  		.attr("cy", d.lp[1]);
 		}
 
 		function dragended(d) {
@@ -102,17 +102,64 @@
 		}
 
 		function get_distance(p1, p2) {
-			return Math.sqrt(sq(p1.x - p2.x) + sq(p1.y - p2.y));
+			return Math.sqrt(sq(p1[0] - p2[0]) + sq(p1[1] - p2[1]));
 		}
 
 		function minus(v1, v2) {
-			return {x: v1.x - v2.x, y: v1.y - v2.y};
+			return [v1[0] - v2[0], v1[1] - v2[1]];
 		}
 
 		function scale(v, factor) {
-			return {x: v.x * factor, y: v.y * factor};
+			return v.map(c => factor * c);
 		}	
 
+		function plus(v1, v2) {
+			return v1.map((c1, i) => c1 + v2[i]);
+		}
+
 		function sq(v) {return v*v};
+
+
+
+
+		function projection() {
+			var x = d3.scaleLinear();
+			var y = d3.scaleLinear();
+
+			function p(val) {
+				return [x(val[0]), y(val[1])];
+			}
+
+			p.invert = function(val) {
+				return [x.invert(val[0]), y.invert(val[1])];
+			}
+
+
+			p.x_domain = function(_) {
+				if (!arguments.length) return x.domain();
+				x.domain(_);
+				return p;
+			}
+
+			p.y_domain = function(_) {
+				if (!arguments.length) return y.domain();
+				y.domain(_);
+				return p;
+			}
+
+			p.x_range = function(_) {
+				if (!arguments.length) return x.range();
+				x.range(_);
+				return p;
+			}
+
+			p.y_range = function(_) {
+				if (!arguments.length) return x.range();
+				y.range(_);
+				return p;
+			}
+
+			return p;
+		}
 	} 
 })()
